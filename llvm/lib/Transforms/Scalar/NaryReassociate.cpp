@@ -410,7 +410,10 @@ NaryReassociatePass::tryReassociateGEPAtIndex(GetElementPtrInst *GEP,
                 tryReassociateGEPAtIndex(GEP, I, RHS, LHS, IndexedType))
           return NewGEP;
       }
-    } else if (UI && UI->isUniform(LHS) && !UI->isUniform(RHS)) {
+      return nullptr;
+    }
+
+    if (UI && UI->isUniform(LHS) && !UI->isUniform(RHS)) {
       LLVM_DEBUG(
           dbgs() << "NARY: Preferring uniform remainder for GEP index\n");
       // LHS is uniform, prefer it as remainder - try RHS first
@@ -422,16 +425,16 @@ NaryReassociatePass::tryReassociateGEPAtIndex(GetElementPtrInst *GEP,
       if (auto *NewGEP =
               tryReassociateGEPAtIndex(GEP, I, LHS, RHS, IndexedType))
         return NewGEP;
-    } else {
-      // Default order
+      return nullptr;
+    }
+
+    // Default order
+    if (auto *NewGEP = tryReassociateGEPAtIndex(GEP, I, LHS, RHS, IndexedType))
+      return NewGEP;
+    if (LHS != RHS) {
       if (auto *NewGEP =
-              tryReassociateGEPAtIndex(GEP, I, LHS, RHS, IndexedType))
+              tryReassociateGEPAtIndex(GEP, I, RHS, LHS, IndexedType))
         return NewGEP;
-      if (LHS != RHS) {
-        if (auto *NewGEP =
-                tryReassociateGEPAtIndex(GEP, I, RHS, LHS, IndexedType))
-          return NewGEP;
-      }
     }
   }
   return nullptr;
@@ -558,18 +561,19 @@ Instruction *NaryReassociatePass::tryReassociateBinaryOp(Value *LHS, Value *RHS,
                 tryReassociatedBinaryOp(getBinarySCEV(I, AExpr, RHSExpr), B, I))
           return NewI;
       }
-    } else {
-      // Default order: try (A op RHS) op B first
-      if (BExpr != RHSExpr) {
-        if (auto *NewI =
-                tryReassociatedBinaryOp(getBinarySCEV(I, AExpr, RHSExpr), B, I))
-          return NewI;
-      }
-      if (AExpr != RHSExpr) {
-        if (auto *NewI =
-                tryReassociatedBinaryOp(getBinarySCEV(I, BExpr, RHSExpr), A, I))
-          return NewI;
-      }
+      return nullptr;
+    }
+
+    // Default order: try (A op RHS) op B first
+    if (BExpr != RHSExpr) {
+      if (auto *NewI =
+              tryReassociatedBinaryOp(getBinarySCEV(I, AExpr, RHSExpr), B, I))
+        return NewI;
+    }
+    if (AExpr != RHSExpr) {
+      if (auto *NewI =
+              tryReassociatedBinaryOp(getBinarySCEV(I, BExpr, RHSExpr), A, I))
+        return NewI;
     }
   }
   return nullptr;
@@ -748,18 +752,19 @@ Value *NaryReassociatePass::tryReassociateMinOrMax(Instruction *I,
       if (auto *NewMinMax = tryCombination(A, AExpr, RHS, RHSExpr, B, BExpr))
         return NewMinMax;
     }
-  } else {
-    // Default order
-    if (BExpr != RHSExpr) {
-      // Try (A op RHS) op B
-      if (auto *NewMinMax = tryCombination(A, AExpr, RHS, RHSExpr, B, BExpr))
-        return NewMinMax;
-    }
-    if (AExpr != RHSExpr) {
-      // Try (RHS op B) op A
-      if (auto *NewMinMax = tryCombination(RHS, RHSExpr, B, BExpr, A, AExpr))
-        return NewMinMax;
-    }
+    return nullptr;
+  }
+
+  // Default order
+  if (BExpr != RHSExpr) {
+    // Try (A op RHS) op B
+    if (auto *NewMinMax = tryCombination(A, AExpr, RHS, RHSExpr, B, BExpr))
+      return NewMinMax;
+  }
+  if (AExpr != RHSExpr) {
+    // Try (RHS op B) op A
+    if (auto *NewMinMax = tryCombination(RHS, RHSExpr, B, BExpr, A, AExpr))
+      return NewMinMax;
   }
 
   return nullptr;
