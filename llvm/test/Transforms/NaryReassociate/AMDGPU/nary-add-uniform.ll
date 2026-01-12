@@ -185,15 +185,14 @@ define amdgpu_kernel void @prefer_uniform_grouping_umin(i32 %u1, i32 %u2) {
 }
 
 ; Test GEP: prefer uniform remainder in index calculation
-; For GEP with index = LHS + RHS:
-;   - If RHS is uniform, prefer LHS first (uniform RHS as remainder)
-;   - If LHS is uniform, prefer RHS first (uniform LHS as remainder)
 define amdgpu_kernel void @prefer_uniform_gep_remainder(ptr %base, i64 %u_offset) {
 ; CHECK-LABEL: define amdgpu_kernel void @prefer_uniform_gep_remainder(
 ; CHECK-SAME: ptr [[BASE:%.*]], i64 [[U_OFFSET:%.*]]) {
 ; CHECK-NEXT:    [[D:%.*]] = call i32 @llvm.amdgcn.workitem.id.x()
 ; CHECK-NEXT:    [[D_EXT:%.*]] = zext i32 [[D]] to i64
+; CHECK-NEXT:    [[GEP_U:%.*]] = getelementptr i32, ptr [[BASE]], i64 [[U_OFFSET]]
 ; CHECK-NEXT:    [[GEP_D:%.*]] = getelementptr i32, ptr [[BASE]], i64 [[D_EXT]]
+; CHECK-NEXT:    call void @use_ptr(ptr [[GEP_U]])
 ; CHECK-NEXT:    call void @use_ptr(ptr [[GEP_D]])
 ; CHECK-NEXT:    [[GEP_RESULT:%.*]] = getelementptr i32, ptr [[GEP_D]], i64 [[U_OFFSET]]
 ; CHECK-NEXT:    call void @use_ptr(ptr [[GEP_RESULT]])
@@ -202,13 +201,13 @@ define amdgpu_kernel void @prefer_uniform_gep_remainder(ptr %base, i64 %u_offset
   %d = call i32 @llvm.amdgcn.workitem.id.x()
   %d_ext = zext i32 %d to i64
 
-  ; Create dominating GEP with divergent index
-  %gep_d = getelementptr i32, ptr %base, i64 %d_ext
-  call void @use_ptr(ptr %gep_d)
+  ; Create BOTH dominating GEPs so there's a choice
+  %gep_u = getelementptr i32, ptr %base, i64 %u_offset  ; uniform index
+  %gep_d = getelementptr i32, ptr %base, i64 %d_ext     ; divergent index
 
-  ; GEP with index = d + u_offset
-  ; Should prefer finding dominating GEP with d, leaving uniform u_offset as remainder
-  %idx = add i64 %d_ext, %u_offset
+  call void @use_ptr(ptr %gep_u)
+  call void @use_ptr(ptr %gep_d)
+  %idx = add i64 %u_offset, %d_ext
   %gep_result = getelementptr i32, ptr %base, i64 %idx
   call void @use_ptr(ptr %gep_result)
 
